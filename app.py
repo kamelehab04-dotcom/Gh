@@ -3,7 +3,9 @@ import os
 import requests
 import google.generativeai as genai
 from gtts import gTTS
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+# استيرادات MoviePy الصحيحة للإصدار الجديد
+from moviepy import ImageClip, AudioFileClip
+from moviepy.video.compositing.concatenate import concatenate_videoclips
 from diffusers import StableDiffusionPipeline
 import torch
 from PIL import Image
@@ -14,7 +16,7 @@ import tempfile
 st.set_page_config(page_title="مولد فيديوهات الدروس التعليمية", layout="wide")
 st.title("🎬 مولد فيديو الدرس القصصي بالذكاء الاصطناعي")
 
-# --- 2. إدخال المفاتيح السرية (API Keys) ---
+# --- 2. إدخال المفاتيح السرية ---
 with st.sidebar:
     st.header("⚙️ الإعدادات")
     gemini_api_key = st.text_input("مفتاح Google Gemini API", type="password")
@@ -68,16 +70,14 @@ if st.button("🚀 توليد الفيديو الآن"):
     # --- 6. تحويل النص إلى كلام (TTS) ---
     with st.spinner("🔊 جاري تحويل النص إلى صوت..."):
         try:
-            # استخراج النص السردي من السيناريو (يفترض أن كل مشهد يبدأ بـ "المشهد X")
             lines = script.split('\n')
             narration_text = ""
             for line in lines:
                 if "المشهد" in line or "راوي" in line:
-                    # استخراج النص بعد النقطتين
                     if ":" in line:
                         narration_text += line.split(":", 1)[1].strip() + " "
             if not narration_text:
-                narration_text = script  # استخدام النص كاملًا كاحتياطي
+                narration_text = script
             
             tts = gTTS(text=narration_text, lang='ar')
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_audio:
@@ -91,7 +91,6 @@ if st.button("🚀 توليد الفيديو الآن"):
     # --- 7. توليد الصور لكل مشهد باستخدام Stable Diffusion ---
     with st.spinner("🖼️ جاري توليد الصور (قد يستغرق بعض الوقت)..."):
         try:
-            # تحميل نموذج Stable Diffusion (خفيف)
             pipe = StableDiffusionPipeline.from_pretrained(
                 "CompVis/stable-diffusion-v1-4", 
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
@@ -99,13 +98,11 @@ if st.button("🚀 توليد الفيديو الآن"):
             if torch.cuda.is_available():
                 pipe = pipe.to("cuda")
             
-            # استخراج وصف الصور من السيناريو
             image_prompts = []
             for line in lines:
                 if "صورة:" in line or "وصف الصورة:" in line:
                     image_prompts.append(line.split(":", 1)[1].strip())
             
-            # إذا لم يتم العثور على أوصاف، استخدم الموضوع كوصف
             if not image_prompts:
                 image_prompts = [f"رسم توضيحي لدرس عن {topic}, أسلوب كرتوني تعليمي"] * num_scenes
             
@@ -129,11 +126,11 @@ if st.button("🚀 توليد الفيديو الآن"):
             
             clips = []
             for img_path in image_paths:
-                clip = ImageClip(img_path).set_duration(duration_per_clip).resize(height=720)
+                clip = ImageClip(img_path).with_duration(duration_per_clip).with_resized(height=720)
                 clips.append(clip)
             
             video_clip = concatenate_videoclips(clips, method="compose")
-            final_video = video_clip.set_audio(audio_clip)
+            final_video = video_clip.with_audio(audio_clip)
             
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_video:
                 final_video.write_videofile(tmp_video.name, fps=24, codec='libx264', audio_codec='aac')
@@ -141,7 +138,6 @@ if st.button("🚀 توليد الفيديو الآن"):
             
             st.success("✅ تم توليد الفيديو بنجاح!")
             
-            # عرض وتحميل الفيديو
             st.video(video_path)
             with open(video_path, "rb") as f:
                 st.download_button("📥 تحميل الفيديو", f, file_name="درس_تعليمي.mp4", mime="video/mp4")
@@ -150,6 +146,5 @@ if st.button("🚀 توليد الفيديو الآن"):
             st.error(f"حدث خطأ أثناء تجميع الفيديو: {e}")
             st.stop()
 
-    # --- 9. تنظيف الملفات المؤقتة ---
     st.markdown("---")
     st.info("💡 تم حفظ الفيديو مؤقتًا. يمكنك تحميله الآن أو إعادة التشغيل لتجربة جديدة.")
